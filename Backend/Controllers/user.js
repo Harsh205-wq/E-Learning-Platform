@@ -2,6 +2,7 @@ import { User } from "../Models/model.js"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import sendMail from "../Middleware/sendMail.js"
+import tryCatch from "../Middleware/trycatch.js"
 
 export const register=async(req,res)=>{
     try {
@@ -12,8 +13,6 @@ export const register=async(req,res)=>{
         })
 
         const hashPassword=await bcrypt.hash(password,10)
-
-
 
 
         user={
@@ -28,7 +27,7 @@ export const register=async(req,res)=>{
             otp,
         },process.env.Activation_Secret,
         {
-            expiresIn:"5d"
+            expiresIn:"5m"
         }
     );
 
@@ -57,3 +56,53 @@ export const register=async(req,res)=>{
         })
     }
 }
+export const verifyUser=tryCatch(async(req,res)=>{
+    const {otp,activationtoken}=req.body
+    const verify=jwt.verify(activationtoken,process.env.Activation_Secret)
+    if(!verify) return res.status(400).json({
+        message:"Otp expired"
+    })
+    if(verify.otp!==otp)
+         return res.status(400).json({
+        message:"Wrong otp",
+        }) 
+    await User.create({
+        name:verify.user.name,
+        email:verify.user.email,
+        password:verify.user.password,
+    })
+    res.json({
+        message:"User Registered"
+    })
+})
+export const loginUser=tryCatch(async(req,res)=>{
+    const {email,password}=req.body
+
+    const user= await User.findOne({email})
+    if(!user)
+        return res.status(400).json({
+    message:"No user with this email"
+    })
+
+    const matchPassword=await bcrypt.compare(password,user.password)
+    if(!matchPassword)
+        return res.status(400).json({
+         message:"Wrong Password"
+    })
+    const token=await jwt.sign({
+        _id:user._id
+    },
+    process.env.JWT_Sec,{
+        expiresIn:"15d",
+    }
+)
+   res.json({
+      message:`Welcome back ${user.name}`,
+      token,
+      user
+   })
+})
+export const myProfile=tryCatch(async(req,res)=>{
+    const user=await User.findById(req.user._id)
+    res.json({user})
+})
